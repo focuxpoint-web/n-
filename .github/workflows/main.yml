@@ -1,0 +1,53 @@
+name: Secure RDP (UK Server via Tailscale)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Create Secure UK RDP
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 🧱 Create RDP User
+        run: |
+          Write-Host "Creating RDP user..."
+          $Password = ConvertTo-SecureString "SecurePass@123" -AsPlainText -Force
+          New-LocalUser "rdpuser" -Password $Password -FullName "Remote User" -Description "For Remote Desktop Access"
+          Add-LocalGroupMember -Group "Administrators" -Member "rdpuser"
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          Write-Host "✅ RDP user created successfully!"
+
+      - name: 🌐 Install Tailscale
+        run: |
+          Write-Host "Installing Tailscale..."
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi" -OutFile "tailscale.msi"
+          Start-Process msiexec.exe -Wait -ArgumentList '/i tailscale.msi /quiet'
+          Write-Host "✅ Tailscale installed successfully!"
+
+      - name: 🔑 Connect to Tailscale (UK Exit Node)
+        env:
+          TAILSCALE_AUTH_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          Write-Host "Logging in to Tailscale..."
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=$env:TAILSCALE_AUTH_KEY
+          Start-Sleep -Seconds 10
+          Write-Host "Connecting to UK exit node (100.111.252.41)..."
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --exit-node=100.111.252.41 --exit-node-allow-lan-access=true
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" status
+          Write-Host "✅ Connected to Tailscale UK exit node."
+
+      - name: 🌍 Show Public IP
+        run: |
+          Write-Host "Fetching public IP..."
+          $PublicIP = (Invoke-RestMethod -Uri "https://ifconfig.me/ip")
+          Write-Host "🌐 Your Public RDP IP (via UK Exit Node): $PublicIP"
+          Write-Host "✅ RDP is ready!"
+          Write-Host ""
+          Write-Host "🧑 Username: rdpuser"
+          Write-Host "🔑 Password: SecurePass@123"
+          Write-Host "💻 IP: $PublicIP"
+          Write-Host ""
+          Write-Host "⚠️ Note: Connect through Tailscale Network or use this IP via RDP client."
