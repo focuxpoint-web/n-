@@ -1,0 +1,34 @@
+name: Secure RDP (UK Server via Tailscale)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Create Secure UK RDP
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 🧱 Create RDP User
+        shell: pwsh
+        run: |
+          Write-Host "Creating RDP user..."
+          $Password = ConvertTo-SecureString "SecurePass@123" -AsPlainText -Force
+          New-LocalUser "rdpuser" -Password $Password -FullName "Remote User" -Description "For Remote Desktop Access"
+          Add-LocalGroupMember -Group "Administrators" -Member "rdpuser"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "rdpuser"
+
+          # Enable RDP access
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+          Write-Host "✅ RDP user created successfully!"
+
+      - name: 🌐 Install Tailscale
+        shell: pwsh
+        run: |
+          Write-Host "Installing Tailscale..."
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi" -OutFile "tailscale.msi"
+          Start-Process msiexec.exe -Wait -ArgumentList '/i tailscale.msi /quiet'
+          Write-Host "✅ Tailscale installed su
